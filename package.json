@@ -1,0 +1,63 @@
+{
+  "name": "@vibevibes/sdk",
+  "version": "0.1.0",
+  "description": "SDK for building vibe-vibe experiences — types, helpers, hooks, and components",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "zod": "^3.22.4"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0",
+    "yjs": "^13.6.10"
+  },
+  "peerDependenciesMeta": {
+    "yjs": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.48",
+    "react": "^18.2.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.18",
+    "yjs": "^13.6.10"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vibevibes/experience-sdk"
+  },
+  "license": "MIT",
+  "keywords": [
+    "vibevibes",
+    "experience",
+    "sdk",
+    "multiplayer",
+    "collaborative",
+    "ai-native"
+  ]
+}
