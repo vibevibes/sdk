@@ -5,6 +5,7 @@ import type {
   TestDef,
   ExperienceModule,
   EphemeralActionDef,
+  RoomConfigDef,
 } from "./types";
 
 export function defineTool<TInput, TOutput>(config: {
@@ -68,6 +69,55 @@ export function quickTool<TInput>(
     capabilities_required: ["state.write"],
     handler,
   };
+}
+
+/**
+ * Pre-built tool that restores shared state to a previous snapshot.
+ * Required for useUndo/useRedo to work. Add it to your tools array:
+ *
+ *   tools: [...yourTools, undoTool(z)]
+ */
+export function undoTool(zod: any): ToolDef<{ state: Record<string, any> }, { restored: boolean }> {
+  return {
+    name: "_state.restore",
+    description: "Restore shared state to a previous snapshot (used by undo/redo)",
+    input_schema: zod.object({
+      state: zod.record(zod.any()).describe("The state snapshot to restore"),
+    }),
+    risk: "low",
+    capabilities_required: ["state.write"],
+    handler: async (ctx: any, input: { state: Record<string, any> }) => {
+      ctx.setState(input.state);
+      return { restored: true };
+    },
+  };
+}
+
+/**
+ * Define a room configuration schema.
+ * Rooms spawned with this experience will be validated against this schema.
+ *
+ * Usage:
+ *   import { defineRoomConfig } from "@vibevibes/sdk";
+ *   import { z } from "zod";
+ *
+ *   const roomConfig = defineRoomConfig({
+ *     schema: z.object({
+ *       mode: z.enum(["combat", "explore", "dialogue"]),
+ *       difficulty: z.number().min(1).max(10).default(5),
+ *     }),
+ *     defaults: { mode: "explore", difficulty: 5 },
+ *     presets: {
+ *       "boss-fight": { mode: "combat", difficulty: 10 },
+ *       "peaceful":   { mode: "explore", difficulty: 1 },
+ *     },
+ *     description: "Configure the room's game mode and difficulty",
+ *   });
+ */
+export function defineRoomConfig<TConfig extends Record<string, any>>(
+  config: RoomConfigDef<TConfig>,
+): RoomConfigDef<TConfig> {
+  return config;
 }
 
 export function defineExperience(module: ExperienceModule): ExperienceModule {

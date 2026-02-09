@@ -207,3 +207,221 @@ export function Grid({ children, columns = 2, gap = '0.75rem', style }: GridProp
     },
   }, children);
 }
+
+// ─── Slider ───────────────────────────────────────────────────────────────
+
+type SliderProps = {
+  value?: number;
+  onChange?: (value: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  disabled?: boolean;
+  label?: string;
+  style?: Record<string, any>;
+};
+
+export function Slider({ value = 50, onChange, min = 0, max = 100, step = 1, disabled, label, style }: SliderProps) {
+  const pct = ((value - min) / (max - min)) * 100;
+  return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '0.25rem', ...style } },
+    label ? h('div', {
+      style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', color: '#6b7280' },
+    }, h('span', null, label), h('span', null, String(value))) : null,
+    h('input', {
+      type: 'range', min, max, step, value, disabled,
+      onChange: onChange ? (e: any) => onChange(parseFloat(e.target.value)) : undefined,
+      style: {
+        width: '100%', height: '6px', appearance: 'none' as any, WebkitAppearance: 'none' as any,
+        background: `linear-gradient(to right, #6366f1 ${pct}%, #d1d5db ${pct}%)`,
+        borderRadius: '3px', outline: 'none', cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+      },
+    }),
+  );
+}
+
+// ─── Textarea ─────────────────────────────────────────────────────────────
+
+type TextareaProps = {
+  value?: string;
+  onChange?: (value: string) => void;
+  placeholder?: string;
+  rows?: number;
+  disabled?: boolean;
+  style?: Record<string, any>;
+};
+
+export function Textarea({ value, onChange, placeholder, rows = 3, disabled, style }: TextareaProps) {
+  return h('textarea', {
+    value, placeholder, rows, disabled,
+    onChange: onChange ? (e: any) => onChange(e.target.value) : undefined,
+    style: {
+      width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.875rem',
+      border: '1px solid #d1d5db', borderRadius: '0.5rem', outline: 'none',
+      backgroundColor: disabled ? '#f9fafb' : '#fff', color: '#111827',
+      fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: 1.5,
+      boxSizing: 'border-box' as const, resize: 'vertical' as const,
+      ...style,
+    },
+  });
+}
+
+// ─── Modal ────────────────────────────────────────────────────────────────
+
+type ModalProps = {
+  children?: any;
+  open?: boolean;
+  onClose?: () => void;
+  title?: string;
+  style?: Record<string, any>;
+};
+
+export function Modal({ children, open = false, onClose, title, style }: ModalProps) {
+  if (!open) return null;
+  return h('div', {
+    onClick: onClose,
+    style: {
+      position: 'fixed', inset: 0, zIndex: 10000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+    },
+  },
+    h('div', {
+      onClick: (e: any) => e.stopPropagation(),
+      style: {
+        backgroundColor: '#fff', borderRadius: '0.75rem', padding: '1.5rem',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.3)', maxWidth: '480px', width: '90%',
+        maxHeight: '80vh', overflowY: 'auto' as const,
+        ...style,
+      },
+    },
+      title ? h('div', {
+        style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' },
+      },
+        h('h3', { style: { margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#111827' } }, title),
+        onClose ? h('button', {
+          onClick: onClose,
+          style: {
+            background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer',
+            color: '#6b7280', padding: '0.25rem',
+          },
+        }, '\u2715') : null,
+      ) : null,
+      children,
+    ),
+  );
+}
+
+// ─── ColorPicker ──────────────────────────────────────────────────────────
+
+type ColorPickerProps = {
+  value?: string;
+  onChange?: (color: string) => void;
+  presets?: string[];
+  disabled?: boolean;
+  style?: Record<string, any>;
+};
+
+const DEFAULT_COLORS = [
+  '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4',
+  '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#111827',
+  '#6b7280', '#ffffff',
+];
+
+export function ColorPicker({ value = '#6366f1', onChange, presets, disabled, style }: ColorPickerProps) {
+  const colors = presets || DEFAULT_COLORS;
+  return h('div', {
+    style: { display: 'flex', flexWrap: 'wrap' as const, gap: '0.375rem', alignItems: 'center', ...style },
+  },
+    ...colors.map((color) =>
+      h('button', {
+        key: color,
+        onClick: !disabled && onChange ? () => onChange(color) : undefined,
+        style: {
+          width: '28px', height: '28px', borderRadius: '50%', border: color === value ? '2px solid #111827' : '2px solid transparent',
+          backgroundColor: color, cursor: disabled ? 'not-allowed' : 'pointer',
+          outline: color === value ? '2px solid #6366f1' : 'none', outlineOffset: '2px',
+          opacity: disabled ? 0.5 : 1, padding: 0,
+        },
+      }),
+    ),
+    h('input', {
+      type: 'color', value, disabled,
+      onChange: onChange ? (e: any) => onChange(e.target.value) : undefined,
+      style: {
+        width: '28px', height: '28px', padding: 0, border: 'none',
+        borderRadius: '50%', cursor: disabled ? 'not-allowed' : 'pointer',
+      },
+    }),
+  );
+}
+
+// ─── Dropdown ─────────────────────────────────────────────────────────────
+
+type DropdownProps = {
+  value?: string;
+  onChange?: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder?: string;
+  disabled?: boolean;
+  style?: Record<string, any>;
+};
+
+export function Dropdown({ value, onChange, options, placeholder, disabled, style }: DropdownProps) {
+  return h('select', {
+    value: value || '', disabled,
+    onChange: onChange ? (e: any) => onChange(e.target.value) : undefined,
+    style: {
+      width: '100%', padding: '0.5rem 0.75rem', fontSize: '0.875rem',
+      border: '1px solid #d1d5db', borderRadius: '0.5rem', outline: 'none',
+      backgroundColor: disabled ? '#f9fafb' : '#fff', color: '#111827',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      appearance: 'none' as any,
+      backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath d=\'M3 5l3 3 3-3\' fill=\'none\' stroke=\'%236b7280\' stroke-width=\'1.5\'/%3E%3C/svg%3E")',
+      backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.75rem center',
+      paddingRight: '2rem',
+      ...style,
+    },
+  },
+    placeholder ? h('option', { value: '', disabled: true }, placeholder) : null,
+    ...options.map((opt) => h('option', { key: opt.value, value: opt.value }, opt.label)),
+  );
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────
+
+type TabsProps = {
+  tabs: Array<{ id: string; label: string }>;
+  activeTab?: string;
+  onTabChange?: (id: string) => void;
+  children?: any;
+  style?: Record<string, any>;
+};
+
+export function Tabs({ tabs, activeTab, onTabChange, children, style }: TabsProps) {
+  const active = activeTab || tabs[0]?.id;
+  return h('div', { style: { ...style } },
+    h('div', {
+      style: {
+        display: 'flex', borderBottom: '1px solid #e5e7eb', gap: 0,
+      },
+    },
+      ...tabs.map((tab) =>
+        h('button', {
+          key: tab.id,
+          onClick: onTabChange ? () => onTabChange(tab.id) : undefined,
+          style: {
+            padding: '0.5rem 1rem', fontSize: '0.8125rem', fontWeight: 500,
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: tab.id === active ? '#6366f1' : '#6b7280',
+            borderBottom: tab.id === active ? '2px solid #6366f1' : '2px solid transparent',
+            marginBottom: '-1px',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+          },
+        }, tab.label),
+      ),
+    ),
+    h('div', { style: { paddingTop: '0.75rem' } }, children),
+  );
+}

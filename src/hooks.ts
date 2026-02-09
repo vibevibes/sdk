@@ -413,3 +413,198 @@ export function useTypingIndicator(
 
   return { setTyping, typingUsers };
 }
+
+// ─── useUndo ─────────────────────────────────────────────────────────────
+
+export type UseUndoReturn = {
+  /** Undo the last state change. No-op if nothing to undo. */
+  undo: () => void;
+  /** Redo the last undone state change. No-op if nothing to redo. */
+  redo: () => void;
+  /** Whether undo is available. */
+  canUndo: boolean;
+  /** Whether redo is available. */
+  canRedo: boolean;
+  /** Number of states in the undo stack. */
+  undoCount: number;
+  /** Number of states in the redo stack. */
+  redoCount: number;
+};
+
+/**
+ * Undo/redo for shared state via tool calls.
+ *
+ * Tracks state snapshots as sharedState changes. Undo/redo restore
+ * previous/next snapshots by calling a tool (default: "_state.restore").
+ *
+ * The server needs a `_state.restore` tool registered (or pass a custom
+ * restoreTool name). If the tool doesn't exist, undo triggers callTool
+ * which will return an error — but it won't crash.
+ *
+ * Usage:
+ *   const { undo, redo, canUndo, canRedo } = useUndo(sharedState, callTool);
+ *   <button onClick={undo} disabled={!canUndo}>Undo</button>
+ *   <button onClick={redo} disabled={!canRedo}>Redo</button>
+ */
+export function useUndo(
+  sharedState: Record<string, any>,
+  callTool: CallToolFn,
+  opts?: { maxHistory?: number; restoreTool?: string },
+): UseUndoReturn {
+  const maxHistory = opts?.maxHistory ?? 50;
+  const restoreTool = opts?.restoreTool ?? '_state.restore';
+
+  const undoStackRef = React.useRef<Record<string, any>[]>([]);
+  const redoStackRef = React.useRef<Record<string, any>[]>([]);
+  const lastStateRef = React.useRef<Record<string, any> | null>(null);
+  const restoringRef = React.useRef(false);
+  const [, forceRender] = React.useState(0);
+
+  // Track state changes — push previous state onto undo stack
+  React.useEffect(() => {
+    if (restoringRef.current) {
+      restoringRef.current = false;
+      lastStateRef.current = sharedState;
+      return;
+    }
+    if (lastStateRef.current !== null &&
+        lastStateRef.current !== sharedState) {
+      undoStackRef.current = [
+        ...undoStackRef.current.slice(-(maxHistory - 1)),
+        lastStateRef.current,
+      ];
+      redoStackRef.current = [];
+      forceRender((n: number) => n + 1);
+    }
+    lastStateRef.current = sharedState;
+  }, [sharedState, maxHistory]);
+
+  const undo = React.useCallback(() => {
+    const stack = undoStackRef.current;
+    if (stack.length === 0) return;
+    const prev = stack[stack.length - 1];
+    undoStackRef.current = stack.slice(0, -1);
+    redoStackRef.current = [...redoStackRef.current, sharedState];
+    restoringRef.current = true;
+    forceRender((n: number) => n + 1);
+    callTool(restoreTool, { state: prev }).catch(() => {});
+  }, [sharedState, callTool, restoreTool]);
+
+  const redo = React.useCallback(() => {
+    const stack = redoStackRef.current;
+    if (stack.length === 0) return;
+    const next = stack[stack.length - 1];
+    redoStackRef.current = stack.slice(0, -1);
+    undoStackRef.current = [...undoStackRef.current, sharedState];
+    restoringRef.current = true;
+    forceRender((n: number) => n + 1);
+    callTool(restoreTool, { state: next }).catch(() => {});
+  }, [sharedState, callTool, restoreTool]);
+
+  return {
+    undo,
+    redo,
+    canUndo: undoStackRef.current.length > 0,
+    canRedo: redoStackRef.current.length > 0,
+    undoCount: undoStackRef.current.length,
+    redoCount: redoStackRef.current.length,
+  };
+}
+
+// ─── useDebounce ─────────────────────────────────────────────────────────
+
+/**
+ * Returns a debounced version of callTool. Calls are delayed by `delayMs`
+ * and collapsed — only the last call within the window fires.
+ *
+ * Perfect for search inputs, text fields, sliders.
+ *
+ * Usage:
+ *   const debouncedCall = useDebounce(callTool, 300);
+ *   <input onChange={(e) => debouncedCall('search.update', { query: e.target.value })} />
+ */
+export function useDebounce(callTool: CallToolFn, delayMs: number = 300): CallToolFn {
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestRef = React.useRef<{ name: string; input: any } | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  return React.useCallback(
+    (name: string, input: any) => {
+      latestRef.current = { name, input };
+      if (timerRef.current) clearTimeout(timerRef.current);
+
+      return new Promise<any>((resolve, reject) => {
+        timerRef.current = setTimeout(async () => {
+          const latest = latestRef.current;
+          if (!latest) return;
+          try {
+            const result = await callTool(latest.name, latest.input);
+            resolve(result);
+          } catch (err) {
+            reject(err);
+          }
+        }, delayMs);
+      });
+    },
+    [callTool, delayMs],
+  );
+}
+
+// ─── useThrottle ─────────────────────────────────────────────────────────
+
+/**
+ * Returns a throttled version of callTool. At most one call fires per
+ * `intervalMs`. Trailing calls are queued and fire after the interval.
+ *
+ * Perfect for cursor positions, brush strokes, drag events.
+ *
+ * Usage:
+ *   const throttledCall = useThrottle(callTool, 50);
+ *   onMouseMove={(e) => throttledCall('cursor.move', { x: e.clientX, y: e.clientY })}
+ */
+export function useThrottle(callTool: CallToolFn, intervalMs: number = 50): CallToolFn {
+  const lastCallRef = React.useRef(0);
+  const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestRef = React.useRef<{ name: string; input: any } | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  return React.useCallback(
+    (name: string, input: any) => {
+      latestRef.current = { name, input };
+      const now = Date.now();
+      const elapsed = now - lastCallRef.current;
+
+      if (elapsed >= intervalMs) {
+        lastCallRef.current = now;
+        return callTool(name, input);
+      }
+
+      // Schedule trailing call
+      if (timerRef.current) clearTimeout(timerRef.current);
+      return new Promise<any>((resolve, reject) => {
+        timerRef.current = setTimeout(async () => {
+          lastCallRef.current = Date.now();
+          const latest = latestRef.current;
+          if (!latest) return;
+          try {
+            const result = await callTool(latest.name, latest.input);
+            resolve(result);
+          } catch (err) {
+            reject(err);
+          }
+        }, intervalMs - elapsed);
+      });
+    },
+    [callTool, intervalMs],
+  );
+}

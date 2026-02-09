@@ -13,6 +13,7 @@ function mockCtx(overrides: Partial<ToolCtx> = {}): ToolCtx & { getState: () => 
     timestamp: Date.now(),
     memory: {},
     setMemory: () => {},
+    roomConfig: {},
     getState: () => state,
     ...overrides,
     // Keep setState/getState functional

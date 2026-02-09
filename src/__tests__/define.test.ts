@@ -77,6 +77,7 @@ describe("defineTool", () => {
       timestamp: Date.now(),
       memory: {},
       setMemory: () => {},
+      roomConfig: {},
     };
 
     const result = await tool.handler(ctx, { amount: 3 });

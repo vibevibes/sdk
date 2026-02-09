@@ -73,6 +73,38 @@ export type ExperienceManifest = {
 };
 
 /**
+ * Room configuration schema + metadata.
+ *
+ * Experience authors declare what values a room accepts when spawned.
+ * Each room becomes an instance of the experience with a specific config.
+ * Think of it as: experience = game engine, config = level parameters.
+ *
+ * Example:
+ *   roomConfig: defineRoomConfig({
+ *     schema: z.object({
+ *       mode: z.enum(["combat", "explore", "dialogue"]).describe("Room game mode"),
+ *       difficulty: z.number().min(1).max(10).default(5).describe("Difficulty level"),
+ *       theme: z.string().default("forest").describe("Visual theme"),
+ *     }),
+ *     defaults: { mode: "explore", difficulty: 5, theme: "forest" },
+ *     presets: {
+ *       "boss-fight": { mode: "combat", difficulty: 10, theme: "volcano" },
+ *       "peaceful":   { mode: "explore", difficulty: 1, theme: "meadow" },
+ *     },
+ *   })
+ */
+export type RoomConfigDef<TConfig extends Record<string, any> = Record<string, any>> = {
+  /** Zod schema defining the config shape. Used for validation + JSON schema generation. */
+  schema: z.ZodTypeAny;
+  /** Default config values for rooms that don't specify config at spawn time. */
+  defaults?: Partial<TConfig>;
+  /** Named presets: quick ways to spawn rooms with predefined configs. */
+  presets?: Record<string, TConfig>;
+  /** Human-readable description of what this config controls. */
+  description?: string;
+};
+
+/**
  * Simplified Tool Context (no yjs, no events array)
  *
  * Use the generic parameter for typed state:
@@ -80,7 +112,10 @@ export type ExperienceManifest = {
  *     const current = ctx.state.count; // typed
  *   }
  */
-export type ToolCtx<TState extends Record<string, any> = Record<string, any>> = {
+export type ToolCtx<
+  TState extends Record<string, any> = Record<string, any>,
+  TConfig extends Record<string, any> = Record<string, any>,
+> = {
   roomId: string;
   actorId: string;
   owner?: string;  // Who this actor is acting on behalf of (e.g. GitHub username)
@@ -90,6 +125,12 @@ export type ToolCtx<TState extends Record<string, any> = Record<string, any>> = 
   // Persistent memory: survives across room sessions (keyed by experience + owner)
   memory: Record<string, any>;
   setMemory: (updates: Record<string, any>) => void;
+  /**
+   * This room's config values. Set at spawn time, immutable after creation.
+   * Allows tools to behave differently based on the room's modality.
+   * e.g. `ctx.roomConfig.mode === "combat"` to branch tool behavior.
+   */
+  roomConfig: TConfig;
   /**
    * Spawn a child room with a specified experience.
    * Only available when manifest declares "room.spawn" in requested_capabilities.
@@ -124,7 +165,10 @@ export type ToolDef<TInput = any, TOutput = any> = {
  *     const count = sharedState.count; // fully typed
  *   };
  */
-export type CanvasProps<TState extends Record<string, any> = Record<string, any>> = {
+export type CanvasProps<
+  TState extends Record<string, any> = Record<string, any>,
+  TConfig extends Record<string, any> = Record<string, any>,
+> = {
   roomId: string;
   actorId: string;
 
@@ -146,6 +190,13 @@ export type CanvasProps<TState extends Record<string, any> = Record<string, any>
 
   // Participants
   participants: string[];
+
+  /**
+   * This room's config values, set at spawn time.
+   * Use this to adapt the UI based on the room's modality.
+   * e.g. render a combat UI vs exploration UI based on `roomConfig.mode`.
+   */
+  roomConfig: TConfig;
 };
 
 /**
@@ -178,6 +229,7 @@ export type TestHelpers = {
     actorId?: string;
     roomId?: string;
     owner?: string;
+    roomConfig?: Record<string, any>;
   }) => ToolCtx & { getState: () => Record<string, any> };
   expect: <T>(actual: T) => ExpectChain<T>;
   snapshot: (label: string, value: any) => void;
@@ -288,11 +340,19 @@ export type SpawnRoomOpts = {
   initialState?: Record<string, any>;
   /** If true, store parent roomId in child state as _parentRoom */
   linkBack?: boolean;
+  /**
+   * Config values for the new room. Validated against the experience's roomConfig schema.
+   * If a preset name is given as a string, the preset's config is used.
+   * If omitted, the experience's default config is applied.
+   */
+  config?: Record<string, any> | string;
 };
 
 export type SpawnRoomResult = {
   roomId: string;
   url: string;
+  /** The resolved config applied to the spawned room. */
+  config: Record<string, any>;
 };
 
 /**
@@ -306,6 +366,22 @@ export type RoomLink = {
   createdAt: string;
 };
 
+/**
+ * A single entry in the experience registry (vibevibes.registry.json).
+ * Maps an experience ID to its source path for cross-experience room spawning.
+ */
+export type RegistryEntry = {
+  path: string;  // Relative path to the experience's entry file (e.g. "../chat-v2/src/index.tsx")
+};
+
+/**
+ * Per-project experience registry format (vibevibes.registry.json).
+ * Enables cross-experience room spawning by mapping experience IDs to source paths.
+ */
+export type ExperienceRegistry = {
+  experiences: Record<string, RegistryEntry>;
+};
+
 export type ExperienceModule = {
   manifest: ExperienceManifest;
   Canvas: React.FC<CanvasProps>;
@@ -316,4 +392,23 @@ export type ExperienceModule = {
   ephemeralActions?: EphemeralActionDef[];
   /** State migrations for version upgrades. */
   migrations?: StateMigration[];
+  /**
+   * Room configuration schema.
+   * Declares what values each room instance accepts at spawn time.
+   * Turns your experience into a configurable engine:
+   *   experience = engine, roomConfig = level/mode parameters.
+   *
+   * Example: A dungeon crawler where each room is a different biome:
+   *   roomConfig: defineRoomConfig({
+   *     schema: z.object({
+   *       biome: z.enum(["forest", "cave", "desert"]),
+   *       enemyDensity: z.number().min(0).max(1).default(0.5),
+   *     }),
+   *     presets: {
+   *       "dark-cave": { biome: "cave", enemyDensity: 0.8 },
+   *       "peaceful-forest": { biome: "forest", enemyDensity: 0.1 },
+   *     },
+   *   })
+   */
+  roomConfig?: RoomConfigDef;
 };
