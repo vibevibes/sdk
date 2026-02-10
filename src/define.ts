@@ -121,8 +121,8 @@ export function defineRoomConfig<TConfig extends Record<string, any>>(
 }
 
 export function defineExperience(module: ExperienceModule): ExperienceModule {
-  // Apply manifest defaults
-  const m = module.manifest;
+  // Apply manifest defaults (manifest is optional for local dev)
+  const m = module.manifest ?? {} as any;
   return {
     ...module,
     manifest: {

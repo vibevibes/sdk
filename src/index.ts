@@ -6,3 +6,6 @@ export * from "./agent-protocol";
 export * from "./agent-hints";
 export * from "./migrations";
 export * from "./storage";
+export * from "./scene";
+export * from "./chat";
+export * from "./bug-report";
