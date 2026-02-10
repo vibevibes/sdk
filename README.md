@@ -176,22 +176,6 @@ manifest: {
 }
 ```
 
-## Agent Hints
-
-Declarative guidance for agent behavior:
-
-```tsx
-agentHints: [
-  {
-    trigger: "when a player joins",
-    condition: "state.players?.length > state.lastGreetedCount",
-    suggestedTools: ["world.narrate"],
-    priority: "high",
-    cooldownMs: 5000,
-  },
-]
-```
-
 ## Room Configuration
 
 Experiences can declare configurable parameters. Rooms are spawned with specific configs:
