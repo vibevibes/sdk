@@ -9,3 +9,4 @@ export * from "./storage";
 export * from "./scene";
 export * from "./chat";
 export * from "./bug-report";
+export * from "./composability";

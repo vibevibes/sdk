@@ -13,6 +13,7 @@ export type {
 // Renderer
 export { SceneRenderer } from './renderer';
 export { SvgSceneRenderer } from './renderer-svg';
+export { PixiSceneRenderer } from './renderer-pixi';
 
 // Tools
 export { createSceneTools } from './tools';

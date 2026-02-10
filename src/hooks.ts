@@ -608,3 +608,52 @@ export function useThrottle(callTool: CallToolFn, intervalMs: number = 50): Call
     [callTool, intervalMs],
   );
 }
+
+// ─── useBlob ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetches and caches a binary blob from the server.
+ * Returns the ArrayBuffer when loaded, null while loading.
+ *
+ * Usage:
+ *   const pixels = useBlob(sharedState.canvasBlobId);
+ *   if (pixels) { // render pixels }
+ */
+export function useBlob(
+  blobKey: string | null | undefined,
+  serverUrl?: string,
+): ArrayBuffer | null {
+  const [data, setData] = React.useState<ArrayBuffer | null>(null);
+  const cacheRef = React.useRef<Map<string, ArrayBuffer>>(new Map());
+
+  React.useEffect(() => {
+    if (!blobKey) { setData(null); return; }
+
+    // Check cache
+    const cached = cacheRef.current.get(blobKey);
+    if (cached) { setData(cached); return; }
+
+    // Fetch from server
+    const baseUrl = serverUrl || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:4321');
+    let cancelled = false;
+
+    fetch(`${baseUrl}/blobs/${encodeURIComponent(blobKey)}`)
+      .then(res => {
+        if (!res.ok) throw new Error(`Blob not found: ${blobKey}`);
+        return res.arrayBuffer();
+      })
+      .then(buf => {
+        if (!cancelled) {
+          cacheRef.current.set(blobKey, buf);
+          setData(buf);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setData(null);
+      });
+
+    return () => { cancelled = true; };
+  }, [blobKey, serverUrl]);
+
+  return data;
+}

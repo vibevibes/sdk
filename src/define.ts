@@ -6,6 +6,7 @@ import type {
   ExperienceModule,
   EphemeralActionDef,
   RoomConfigDef,
+  StreamDef,
 } from "./types";
 
 export function defineTool<TInput, TOutput>(config: {
@@ -118,6 +119,47 @@ export function defineRoomConfig<TConfig extends Record<string, any>>(
   config: RoomConfigDef<TConfig>,
 ): RoomConfigDef<TConfig> {
   return config;
+}
+
+/**
+ * Define a continuous state stream for high-frequency human input.
+ * Streams bypass the full tool handler pipeline but still validate input
+ * and persist to shared state via a pure merge function.
+ *
+ * Usage:
+ *   import { defineStream } from "@vibevibes/sdk";
+ *   import { z } from "zod";
+ *
+ *   const brushStream = defineStream({
+ *     name: "brush.stroke",
+ *     description: "Continuous brush stroke data",
+ *     input_schema: z.object({
+ *       x: z.number(),
+ *       y: z.number(),
+ *       pressure: z.number().min(0).max(1),
+ *       color: z.string(),
+ *     }),
+ *     merge: (state, input, actorId) => ({
+ *       ...state,
+ *       strokes: [...(state.strokes || []), { ...input, actorId, ts: Date.now() }],
+ *     }),
+ *     rateLimit: 60, // max 60 inputs/sec/actor
+ *   });
+ */
+export function defineStream<TInput>(config: {
+  name: string;
+  description?: string;
+  input_schema: z.ZodType<TInput>;
+  merge: (state: Record<string, any>, input: TInput, actorId: string) => Record<string, any>;
+  rateLimit?: number;
+}): StreamDef<TInput> {
+  return {
+    name: config.name,
+    description: config.description,
+    input_schema: config.input_schema,
+    merge: config.merge,
+    rateLimit: config.rateLimit,
+  };
 }
 
 export function defineExperience(module: ExperienceModule): ExperienceModule {

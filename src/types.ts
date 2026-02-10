@@ -104,6 +104,18 @@ export type RoomConfigDef<TConfig extends Record<string, any> = Record<string, a
   description?: string;
 };
 
+/** Stream definition for high-frequency continuous state updates.
+ *  Bypasses the full tool handler pipeline but still validates and persists to state. */
+export type StreamDef<TInput = any> = {
+  name: string;
+  description?: string;
+  input_schema: z.ZodTypeAny;
+  /** Pure merge function: takes current state, stream input, and actorId, returns new state. */
+  merge: (state: Record<string, any>, input: TInput, actorId: string) => Record<string, any>;
+  /** Max inputs per second per actor (server-enforced). Default: 60. */
+  rateLimit?: number;
+};
+
 /**
  * Simplified Tool Context (no yjs, no events array)
  *
@@ -137,6 +149,10 @@ export type ToolCtx<
    * Rate limited to 5 spawns per room per 5 minutes.
    */
   spawnRoom?: (opts: SpawnRoomOpts) => Promise<SpawnRoomResult>;
+  /** Store a binary blob (pixel buffers, audio, etc). Returns the blob key. */
+  setBlob?: (key: string, data: ArrayBuffer) => string;
+  /** Retrieve a binary blob by key. */
+  getBlob?: (key: string) => ArrayBuffer | undefined;
 };
 
 export type ToolDef<TInput = any, TOutput = any> = {
@@ -187,6 +203,9 @@ export type CanvasProps<
   dispatchEphemeralAction?: (name: string, input: any) => void;
   /** Subscribe to ephemeral actions from other participants. */
   onEphemeralAction?: (handler: (action: { name: string; input: any; actorId: string; ts: number }) => void) => () => void;
+
+  /** Send high-frequency continuous input via WebSocket stream. Bypasses tool gate. */
+  stream?: (name: string, input: any) => void;
 
   // Participants
   participants: string[];
@@ -411,4 +430,10 @@ export type ExperienceModule = {
    *   })
    */
   roomConfig?: RoomConfigDef;
+  /** Stream definitions for high-frequency continuous state updates (brush strokes, sliders, dragging).
+   *  Bypasses the full tool handler pipeline but still validates and persists to state. */
+  streams?: StreamDef[];
+  /** Agent observation function. Computes a curated view of state for MCP agents.
+   *  Called after each tool execution. If not defined, agents see the full state. */
+  observe?: (state: Record<string, any>, event: ToolEvent | null, actorId: string) => Record<string, any>;
 };
