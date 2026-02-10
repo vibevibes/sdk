@@ -18,9 +18,6 @@ export { PixiSceneRenderer } from './renderer-pixi';
 // Tools
 export { createSceneTools } from './tools';
 
-// Hints
-export { createSceneHints } from './hints';
-
 // Hooks
 export {
   useSceneInteraction,
@@ -51,7 +48,6 @@ export {
   removeNodeById,
   findParent,
   sceneTools,
-  sceneHints,
 } from './helpers';
 
 // Path Builder
@@ -72,6 +68,5 @@ export {
   useRuleTick,
   nodeMatchesSelector,
   createRuleTools,
-  createRuleHints,
   ruleTools,
 } from './rules';

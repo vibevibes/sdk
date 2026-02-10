@@ -263,32 +263,6 @@ export type TestDef = {
   run: (helpers: TestHelpers) => Promise<void>;
 };
 
-/**
- * Declarative hint for agents about when to act.
- * Experience authors include these to guide agent behavior.
- */
-export type AgentHint = {
-  trigger: string;              // "When a new message is posted"
-  condition?: string;           // "state.turn === 'ai'"
-  suggestedTools: string[];     // ["chat.reply"]
-  priority?: 'low' | 'medium' | 'high';
-  cooldownMs?: number;
-  /** Cross-room agent coordination: follow linked rooms and react to activity there. */
-  crossRoom?: {
-    linkTypes?: string[];       // which link types to follow: ["spawned", "referenced"]
-    watchFor?: string[];        // tool names to watch for in linked rooms
-  };
-};
-
-/**
- * A hint that has been evaluated and fired (condition matched, not on cooldown).
- * Returned by the /agent-context endpoint to guide agent behavior.
- */
-export type FiredHint = {
-  trigger: string;
-  suggestedTools: string[];
-  priority: 'low' | 'medium' | 'high';
-};
 
 /**
  * Combined context for the agent's Stop hook.
@@ -298,7 +272,6 @@ export type FiredHint = {
 export type AgentContext = {
   events: ToolEvent[];
   observation: Record<string, any>;
-  firedHints: FiredHint[];
   participants: string[];
   sharedState: Record<string, any>;
 };
@@ -429,7 +402,6 @@ export type ExperienceModule = {
   Canvas: React.FC<CanvasProps>;
   tools: ToolDef[];
   tests?: TestDef[];
-  agentHints?: AgentHint[];
   /** Client-authoritative actions that bypass the tool gate. */
   ephemeralActions?: EphemeralActionDef[];
   /** State migrations for version upgrades. */

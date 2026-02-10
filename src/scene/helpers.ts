@@ -6,9 +6,8 @@
  */
 
 import type { SceneGraph, SceneNode, SceneNodeType, GroupNode, Camera } from './types';
-import type { ToolDef, AgentHint } from '../types';
+import type { ToolDef } from '../types';
 import { createSceneTools } from './tools';
-import { createSceneHints } from './hints';
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -168,9 +167,3 @@ export function sceneTools(z: any, namespace?: string): ToolDef[] {
   return createSceneTools(namespace ?? 'scene', z);
 }
 
-/**
- * Return pre-built agent hints for scene interaction.
- */
-export function sceneHints(namespace?: string): AgentHint[] {
-  return createSceneHints(namespace ?? 'scene');
-}

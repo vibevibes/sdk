@@ -195,8 +195,6 @@ export function defineExperience(module: ExperienceModule & {
   /** Initial state for the experience. If stateSchema is provided and initialState is not,
    *  defaults are extracted from the schema automatically. */
   initialState?: Record<string, any>;
-  /** Agent hints (alias for agentHints). */
-  hints?: ExperienceModule['agentHints'];
   /** Agent slot configurations. */
   agents?: Array<{
     role: string;
@@ -238,15 +236,11 @@ export function defineExperience(module: ExperienceModule & {
     }
   }
 
-  // Copy hints → agentHints alias
-  const agentHints = module.agentHints ?? module.hints;
-
   // Copy agents into manifest.agentSlots if provided at top level
   const agentSlots = m.agentSlots ?? module.agents;
 
   return {
     ...module,
-    agentHints,
     initialState,
     manifest: {
       ...m,

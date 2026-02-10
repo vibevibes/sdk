@@ -2,16 +2,15 @@
  * Standardized chat for experiences.
  *
  * Provides a collapsible ChatPanel component, a useChat hook,
- * tool factories for agent participation, and agent hints.
+ * and tool factories for agent participation.
  *
  * Messages are stored in shared state under `_chat` so agents
- * see them via the MCP watch tool.
+ * see them via the stop hook's /agent-context endpoint.
  *
  * Usage:
- *   import { ChatPanel, createChatTools, createChatHints } from "@vibevibes/sdk";
+ *   import { ChatPanel, createChatTools } from "@vibevibes/sdk";
  *
  *   const tools = [...myTools, ...createChatTools(z)];
- *   const agentHints = [...createChatHints()];
  *
  *   function Canvas(props) {
  *     return <div>
@@ -19,7 +18,7 @@
  *     </div>;
  *   }
  */
-import type { ToolDef, ToolCtx, AgentHint } from './types';
+import type { ToolDef, ToolCtx } from './types';
 import { useTypingIndicator } from './hooks';
 
 // ── Helpers (same pattern as agent-protocol.ts) ─────────────────────────
@@ -102,20 +101,6 @@ export function createChatTools(z: any): ToolDef[] {
         ctx.setState({ ...ctx.state, _chat: [] });
         return { cleared: true };
       },
-    },
-  ];
-}
-
-// ── Agent Hints ─────────────────────────────────────────────────────────
-
-export function createChatHints(): AgentHint[] {
-  return [
-    {
-      trigger: 'A new chat message was sent by a human participant',
-      condition: `(state._chat || []).length > 0 && (state._chat || []).slice(-1)[0]?.actorId?.includes('human')`,
-      suggestedTools: ['_chat.send'],
-      priority: 'medium',
-      cooldownMs: 2000,
     },
   ];
 }

@@ -185,14 +185,12 @@ describe("defineExperience", () => {
     expect(mod.manifest.requested_capabilities).toEqual(["state.write"]);
   });
 
-  it("preserves optional fields like tests and agentHints", () => {
+  it("preserves optional fields like tests", () => {
     const testDef = defineTest({ name: "t", run: async () => {} });
     const mod = defineExperience(makeModule({
       tests: [testDef],
-      agentHints: [{ trigger: "test", suggestedTools: ["foo"] }],
     }));
     expect(mod.tests).toHaveLength(1);
-    expect(mod.agentHints).toHaveLength(1);
   });
 });
 

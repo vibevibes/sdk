@@ -5,14 +5,13 @@
  * shows a form for an optional description, and submits the report
  * as a tool call stored in shared state.
  *
- * Bug reports appear in the MCP watch tool under `sharedState._bugReports`,
- * so agents can see and react to them.
+ * Bug reports are stored in shared state under `_bugReports`,
+ * so agents see them via the stop hook's /agent-context endpoint.
  *
  * Usage:
- *   import { ReportBug, createBugReportTools, createBugReportHints } from "@vibevibes/sdk";
+ *   import { ReportBug, createBugReportTools } from "@vibevibes/sdk";
  *
  *   const tools = [...myTools, ...createBugReportTools(z)];
- *   const agentHints = [...createBugReportHints()];
  *
  *   function Canvas(props) {
  *     return <div>
@@ -20,7 +19,7 @@
  *     </div>;
  *   }
  */
-import type { ToolDef, ToolCtx, AgentHint } from './types';
+import type { ToolDef, ToolCtx } from './types';
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -83,20 +82,6 @@ export function createBugReportTools(z: any): ToolDef[] {
         ctx.setState({ ...ctx.state, _bugReports: reports });
         return { reportId: report.id, totalReports: reports.length };
       },
-    },
-  ];
-}
-
-// ── Agent Hints ─────────────────────────────────────────────────────────
-
-export function createBugReportHints(): AgentHint[] {
-  return [
-    {
-      trigger: 'A new bug report was submitted',
-      condition: `(state._bugReports || []).some(r => r.status === 'open')`,
-      suggestedTools: [],
-      priority: 'low',
-      cooldownMs: 10000,
     },
   ];
 }

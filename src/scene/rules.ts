@@ -11,12 +11,11 @@
  *   Hook:      useRuleTick(scene, rules, worldMeta, callTool)
  *   Matching:  nodeMatchesSelector(node, selector)
  *   Tools:     createRuleTools(z) → ToolDef[]
- *   Hints:     createRuleHints() → AgentHint[]
  *   Shorthand: ruleTools(z) → ToolDef[]
  */
 
 import type { SceneGraph, SceneNode, GroupNode, Vec2 } from './types';
-import type { ToolDef, ToolCtx, AgentHint } from '../types';
+import type { ToolDef, ToolCtx } from '../types';
 import { walkNodes, cloneScene } from './helpers';
 
 // ─── Lazy React ──────────────────────────────────────────────────────────────
@@ -670,30 +669,6 @@ Examples:
         ctx.setState({ ...ctx.state, _worldMeta: meta });
         return { worldMeta: meta };
       },
-    },
-  ];
-}
-
-// ─── Hint Factory ────────────────────────────────────────────────────────────
-
-/**
- * Return agent hints for the rule system.
- */
-export function createRuleHints(): AgentHint[] {
-  return [
-    {
-      trigger: "No rules exist yet and entities are in the scene",
-      condition: `(state._rules || []).length === 0 && (state._scene?.root?.children?.length ?? 0) > 0`,
-      suggestedTools: ["_rules.set"],
-      priority: "medium",
-      cooldownMs: 15000,
-    },
-    {
-      trigger: "Multiple entity types exist and could interact",
-      condition: `(state._rules || []).length > 0 && (state._scene?.root?.children?.length ?? 0) > 3`,
-      suggestedTools: ["_rules.set"],
-      priority: "low",
-      cooldownMs: 30000,
     },
   ];
 }
