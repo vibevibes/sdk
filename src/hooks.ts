@@ -609,6 +609,104 @@ export function useThrottle(callTool: CallToolFn, intervalMs: number = 50): Call
   );
 }
 
+// ─── usePhase ─────────────────────────────────────────────────────────────
+
+export type PhaseConfig<TPhase extends string = string> = {
+  /** Ordered list of phase names. */
+  phases: readonly TPhase[];
+  /** The state key that stores the current phase. Default: "phase". */
+  stateKey?: string;
+  /** Tool name for phase transitions. Default: "_phase.set". */
+  toolName?: string;
+};
+
+export type UsePhaseReturn<TPhase extends string = string> = {
+  /** Current phase name. */
+  current: TPhase;
+  /** Index of current phase (0-based). */
+  index: number;
+  /** Whether current phase is the first. */
+  isFirst: boolean;
+  /** Whether current phase is the last. */
+  isLast: boolean;
+  /** Advance to the next phase. No-op if already last. */
+  next: () => void;
+  /** Go back to the previous phase. No-op if already first. */
+  prev: () => void;
+  /** Jump to a specific phase by name. */
+  goTo: (phase: TPhase) => void;
+  /** Check if the current phase matches. */
+  is: (phase: TPhase) => boolean;
+};
+
+/**
+ * Manages a linear phase/stage machine via shared state.
+ *
+ * Almost every experience has phases: setup → active → review,
+ * ideate → cluster → prioritize, listen → improvise → refine.
+ * This hook compresses that pattern into a one-liner.
+ *
+ * Usage:
+ *   const phase = usePhase(sharedState, callTool, {
+ *     phases: ["setup", "playing", "scoring", "finished"] as const,
+ *   });
+ *
+ *   if (phase.is("setup")) return <SetupScreen />;
+ *   if (phase.is("playing")) return <GameBoard />;
+ *
+ *   <button onClick={phase.next} disabled={phase.isLast}>Next Phase</button>
+ *
+ * Requires a tool to be registered (or use the built-in phaseTool):
+ *   tools: [...yourTools, phaseTool(z)]
+ */
+export function usePhase<TPhase extends string>(
+  sharedState: Record<string, any>,
+  callTool: CallToolFn,
+  config: PhaseConfig<TPhase>,
+): UsePhaseReturn<TPhase> {
+  const { phases, stateKey = "phase", toolName = "_phase.set" } = config;
+  const current = (sharedState[stateKey] ?? phases[0]) as TPhase;
+  const index = phases.indexOf(current);
+  const safeIndex = index === -1 ? 0 : index;
+
+  const next = React.useCallback(() => {
+    if (safeIndex < phases.length - 1) {
+      callTool(toolName, { phase: phases[safeIndex + 1] }).catch(() => {});
+    }
+  }, [safeIndex, phases, callTool, toolName]);
+
+  const prev = React.useCallback(() => {
+    if (safeIndex > 0) {
+      callTool(toolName, { phase: phases[safeIndex - 1] }).catch(() => {});
+    }
+  }, [safeIndex, phases, callTool, toolName]);
+
+  const goTo = React.useCallback(
+    (phase: TPhase) => {
+      if (phases.includes(phase)) {
+        callTool(toolName, { phase }).catch(() => {});
+      }
+    },
+    [phases, callTool, toolName],
+  );
+
+  const is = React.useCallback(
+    (phase: TPhase) => current === phase,
+    [current],
+  );
+
+  return {
+    current,
+    index: safeIndex,
+    isFirst: safeIndex === 0,
+    isLast: safeIndex === phases.length - 1,
+    next,
+    prev,
+    goTo,
+    is,
+  };
+}
+
 // ─── useBlob ─────────────────────────────────────────────────────────────
 
 /**

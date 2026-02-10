@@ -95,6 +95,35 @@ export function undoTool(zod: any): ToolDef<{ state: Record<string, any> }, { re
 }
 
 /**
+ * Pre-built tool for phase transitions. Required for usePhase to work.
+ * Add it to your tools array:
+ *
+ *   tools: [...yourTools, phaseTool(z)]
+ *
+ * Optionally pass the list of valid phases for validation:
+ *   phaseTool(z, ["setup", "playing", "scoring", "finished"])
+ */
+export function phaseTool(zod: any, validPhases?: readonly string[]): ToolDef<{ phase: string }, { phase: string }> {
+  const phaseSchema = validPhases
+    ? zod.enum(validPhases as [string, ...string[]])
+    : zod.string();
+
+  return {
+    name: "_phase.set",
+    description: "Transition to a new phase/stage of the experience",
+    input_schema: zod.object({
+      phase: phaseSchema.describe("The phase to transition to"),
+    }),
+    risk: "low" as ToolRisk,
+    capabilities_required: ["state.write"],
+    handler: async (ctx: any, input: { phase: string }) => {
+      ctx.setState({ ...ctx.state, phase: input.phase });
+      return { phase: input.phase };
+    },
+  };
+}
+
+/**
  * Define a room configuration schema.
  * Rooms spawned with this experience will be validated against this schema.
  *
@@ -162,24 +191,80 @@ export function defineStream<TInput>(config: {
   };
 }
 
-export function defineExperience(module: ExperienceModule): ExperienceModule {
+export function defineExperience(module: ExperienceModule & {
+  /** Initial state for the experience. If stateSchema is provided and initialState is not,
+   *  defaults are extracted from the schema automatically. */
+  initialState?: Record<string, any>;
+  /** Agent hints (alias for agentHints). */
+  hints?: ExperienceModule['agentHints'];
+  /** Agent slot configurations. */
+  agents?: Array<{
+    role: string;
+    systemPrompt: string;
+    allowedTools?: string[];
+    autoSpawn?: boolean;
+    maxInstances?: number;
+  }>;
+  /** Display name (convenience, copied to manifest.title if manifest.title is missing). */
+  name?: string;
+}): ExperienceModule & { initialState?: Record<string, any> } {
   // Apply manifest defaults (manifest is optional for local dev)
   const m = module.manifest ?? {} as any;
+
+  // If stateSchema provided, extract defaults for initialState
+  let initialState = module.initialState;
+  if (module.stateSchema && !initialState) {
+    try {
+      // Parse undefined through the schema to extract all .default() values
+      initialState = module.stateSchema.parse(undefined);
+    } catch {
+      try {
+        // If the schema doesn't accept undefined, try parsing empty object
+        initialState = module.stateSchema.parse({});
+      } catch {
+        // Schema has required fields with no defaults — initialState must be provided manually
+      }
+    }
+  }
+
+  // Validate initialState against schema if both are provided
+  if (module.stateSchema && initialState) {
+    try {
+      module.stateSchema.parse(initialState);
+    } catch (err: any) {
+      console.warn(
+        `[vibevibes] initialState does not match stateSchema: ${err.message ?? err}`
+      );
+    }
+  }
+
+  // Copy hints → agentHints alias
+  const agentHints = module.agentHints ?? module.hints;
+
+  // Copy agents into manifest.agentSlots if provided at top level
+  const agentSlots = m.agentSlots ?? module.agents;
+
   return {
     ...module,
+    agentHints,
+    initialState,
     manifest: {
       ...m,
+      title: m.title || module.name || m.id,
       version: m.version || "0.0.1",
       requested_capabilities: m.requested_capabilities || ["state.write"],
+      agentSlots: agentSlots ?? m.agentSlots,
     },
   };
 }
 
-export function validateExperience(module: ExperienceModule): {
+export function validateExperience(module: ExperienceModule & { initialState?: Record<string, any> }): {
   valid: boolean;
   errors: string[];
+  warnings: string[];
 } {
   const errors: string[] = [];
+  const warnings: string[] = [];
 
   if (!module.manifest?.id) {
     errors.push("manifest.id is required");
@@ -209,8 +294,27 @@ export function validateExperience(module: ExperienceModule): {
     });
   }
 
+  // Validate stateSchema if provided
+  if (module.stateSchema) {
+    if (!module.initialState) {
+      // Try to extract defaults
+      try {
+        module.stateSchema.parse({});
+      } catch {
+        warnings.push("stateSchema has required fields without defaults — provide initialState explicitly");
+      }
+    } else {
+      try {
+        module.stateSchema.parse(module.initialState);
+      } catch (err: any) {
+        errors.push(`initialState does not match stateSchema: ${err.message ?? err}`);
+      }
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors,
+    warnings,
   };
 }

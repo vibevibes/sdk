@@ -281,6 +281,29 @@ export type AgentHint = {
 };
 
 /**
+ * A hint that has been evaluated and fired (condition matched, not on cooldown).
+ * Returned by the /agent-context endpoint to guide agent behavior.
+ */
+export type FiredHint = {
+  trigger: string;
+  suggestedTools: string[];
+  priority: 'low' | 'medium' | 'high';
+};
+
+/**
+ * Combined context for the agent's Stop hook.
+ * Returned by the /agent-context endpoint — everything the agent needs
+ * to decide what to do next in a single HTTP call.
+ */
+export type AgentContext = {
+  events: ToolEvent[];
+  observation: Record<string, any>;
+  firedHints: FiredHint[];
+  participants: string[];
+  sharedState: Record<string, any>;
+};
+
+/**
  * Client-authoritative action that bypasses the tool gate entirely.
  * Goes through Supabase Broadcast directly — no persistence, no server validation.
  * Use for cursor positions, hover states, drag previews, etc.
@@ -411,6 +434,27 @@ export type ExperienceModule = {
   ephemeralActions?: EphemeralActionDef[];
   /** State migrations for version upgrades. */
   migrations?: StateMigration[];
+  /**
+   * Zod schema for the shared state shape. Provides:
+   * - Type safety: ctx.state and sharedState are typed throughout
+   * - Runtime validation: tool mutations are validated against the schema
+   * - Auto-generated initialState: defaults from the schema populate initial state
+   * - Agent legibility: agents can inspect the schema to understand state shape
+   *
+   * Usage:
+   *   stateSchema: z.object({
+   *     count: z.number().default(0).describe("Current counter value"),
+   *     players: z.array(z.object({
+   *       name: z.string(),
+   *       score: z.number().default(0),
+   *     })).default([]).describe("Active players"),
+   *     phase: z.enum(["setup", "playing", "finished"]).default("setup"),
+   *   })
+   *
+   * If both stateSchema and initialState are provided, initialState takes
+   * precedence but is validated against the schema at startup.
+   */
+  stateSchema?: z.ZodTypeAny;
   /**
    * Room configuration schema.
    * Declares what values each room instance accepts at spawn time.

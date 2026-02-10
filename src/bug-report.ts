@@ -122,6 +122,18 @@ async function captureScreenshot(): Promise<string | null> {
       }
     }
 
+    // Snapshot all canvases before html2canvas runs (it can't read WebGL content).
+    // Requires preserveDrawingBuffer:true on WebGL canvases for toDataURL to work.
+    const canvasSnapshots = new Map<HTMLCanvasElement, string>();
+    canvases.forEach((cvs) => {
+      try {
+        const dataUrl = (cvs as HTMLCanvasElement).toDataURL('image/png');
+        if (dataUrl && dataUrl.length > 100) {
+          canvasSnapshots.set(cvs as HTMLCanvasElement, dataUrl);
+        }
+      } catch {}
+    });
+
     // Fallback: html2canvas (loaded in the viewer via CDN)
     const html2canvas = (globalThis as any).html2canvas;
     if (typeof html2canvas === 'function') {
@@ -130,6 +142,22 @@ async function captureScreenshot(): Promise<string | null> {
         useCORS: true,
         logging: false,
         scale: 0.5,
+        onclone: (_doc: Document, clonedRoot: HTMLElement) => {
+          // Replace cloned WebGL canvases with their snapshot images
+          const clonedCanvases = clonedRoot.querySelectorAll('canvas');
+          clonedCanvases.forEach((clonedCvs, idx) => {
+            const originalCvs = canvases[idx] as HTMLCanvasElement;
+            const snapshot = canvasSnapshots.get(originalCvs);
+            if (snapshot) {
+              const img = _doc.createElement('img');
+              img.src = snapshot;
+              img.style.width = clonedCvs.style.width || `${(clonedCvs as HTMLCanvasElement).width}px`;
+              img.style.height = clonedCvs.style.height || `${(clonedCvs as HTMLCanvasElement).height}px`;
+              img.style.display = clonedCvs.style.display;
+              clonedCvs.parentNode?.replaceChild(img, clonedCvs);
+            }
+          });
+        },
       });
       return captured.toDataURL('image/png');
     }
