@@ -56,9 +56,6 @@ export type ExperienceManifest = {
   participantSlots?: ParticipantSlot[];
   category?: string;
   tags?: string[];
-  netcode?: "default" | "tick" | "p2p-ephemeral";
-  tickRateMs?: number;
-  hotKeys?: string[];
 };
 
 export type StreamDef<TInput = any> = {
