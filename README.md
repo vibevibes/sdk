@@ -162,7 +162,7 @@ Browser (Canvas)  <--WebSocket-->  Server  <--HTTP-->  MCP (Agent)
 |---------|-------------|
 | **@vibevibes/sdk** | Define experiences — tools, canvas, state |
 | [@vibevibes/mcp](https://github.com/vibevibes/mcp) | Runtime engine — MCP server + WebSocket + viewer |
-| [@vibevibes/create](https://github.com/vibevibes/create) | `npm create @vibevibes` — scaffold in seconds |
+| [@vibevibes/create](https://github.com/vibevibes/create) | `npx @vibevibes/create` — scaffold in seconds |
 | [experiences](https://github.com/vibevibes/experiences) | Example experiences — fork and remix |
 
 ## License
