@@ -1,6 +1,9 @@
 # @vibevibes/sdk
 
-The primitives for building agent-native experiences — shared interactive apps where humans and AI collaborate in real-time through a shared state, shared tools, and a shared canvas.
+Primitives for building shared human-AI experiences — interactive apps where humans and AI agents collaborate in real-time through shared state, shared tools, and a shared canvas.
+
+[![npm](https://img.shields.io/npm/v/@vibevibes/sdk)](https://www.npmjs.com/package/@vibevibes/sdk)
+[![license](https://img.shields.io/npm/l/@vibevibes/sdk)](./LICENSE)
 
 ## Install
 
@@ -21,7 +24,7 @@ const tools = [
     name: "counter.increment",
     description: "Add to the counter",
     input_schema: z.object({
-      amount: z.number().default(1).describe("Amount to add"),
+      amount: z.number().default(1),
     }),
     handler: async (ctx, input) => {
       const count = (ctx.state.count || 0) + input.amount;
@@ -59,44 +62,24 @@ That's a complete experience. Humans click the button. Agents call the same tool
 
 ## Core Concepts
 
-**Tools are the only way to mutate state.** Every tool has a Zod schema for validation and a handler that calls `ctx.setState()`. Humans use tools via the Canvas. Agents use the same tools via MCP. No backdoors.
+**Tools are the only way to mutate state.** Every tool has a Zod schema and a handler that calls `ctx.setState()`. Humans use tools via the Canvas. Agents use the same tools via MCP. No backdoors.
 
-**Canvas is a React component.** It receives the current shared state and a `callTool` function. It re-renders on every state change.
+**Canvas is a React component.** It receives current shared state and a `callTool` function. Re-renders on every state change.
 
 **Agents are actors, not assistants.** They join rooms, watch for events, react with tools, and persist memory. Same participation model as humans.
 
-## Defining Tools
-
-```tsx
-defineTool({
-  name: "board.place",
-  description: "Place a piece on the board",
-  input_schema: z.object({
-    x: z.number(),
-    y: z.number(),
-    piece: z.string(),
-  }),
-  handler: async (ctx, input) => {
-    const board = { ...ctx.state.board };
-    board[`${input.x},${input.y}`] = input.piece;
-    ctx.setState({ ...ctx.state, board });
-    return { placed: true };
-  },
-});
-```
-
-### Tool Handler Context
+## Tool Handler Context
 
 ```tsx
 type ToolCtx = {
   roomId: string;
-  actorId: string;                     // Who called this tool
-  owner?: string;                      // Owner extracted from actorId
-  state: Record<string, any>;          // Current shared state (read)
-  setState: (s: Record<string, any>) => void;  // Set new state (write)
+  actorId: string;        // Who called this tool
+  owner?: string;         // Owner extracted from actorId
+  state: Record<string, any>;     // Current shared state (read)
+  setState: (s) => void;          // Set new state (write)
   timestamp: number;
-  memory: Record<string, any>;         // Agent's persistent memory
-  setMemory: (updates: Record<string, any>) => void;
+  memory: Record<string, any>;    // Agent's persistent memory
+  setMemory: (updates) => void;
 };
 ```
 
@@ -116,27 +99,35 @@ type CanvasProps = {
 };
 ```
 
-## Agent Slots
+## Hooks
 
-Define named agent roles for multi-agent experiences:
+| Hook | Returns | Purpose |
+|------|---------|---------|
+| `useToolCall(callTool)` | `{ call, loading, error }` | Loading/error tracking |
+| `useSharedState(state, key, default?)` | `value` | Typed state accessor |
+| `useOptimisticTool(callTool, state)` | `{ call, state, pending }` | Optimistic updates with rollback |
+| `useParticipants(participants)` | `ParsedParticipant[]` | Parse actor IDs |
+| `useAnimationFrame(state, interpolate?)` | `displayState` | Frame-rate buffering |
+
+## Components
+
+Inline-styled (no Tailwind needed): `Button`, `Card`, `Input`, `Badge`, `Stack`, `Grid`
+
+## Agent Slots
 
 ```tsx
 manifest: {
-  agentSlots: [
-    {
-      role: "game-master",
-      systemPrompt: "You are the game master.",
-      allowedTools: ["world.narrate", "npc.speak"],
-      autoSpawn: true,
-      maxInstances: 1,
-    },
-  ],
+  agentSlots: [{
+    role: "game-master",
+    systemPrompt: "You are the game master.",
+    allowedTools: ["world.narrate"],
+    autoSpawn: true,
+    maxInstances: 1,
+  }],
 }
 ```
 
 ## Tests
-
-Inline tests for tool handlers:
 
 ```tsx
 import { defineTest } from "@vibevibes/sdk";
@@ -154,26 +145,7 @@ tests: [
 ]
 ```
 
-## Manifest
-
-```tsx
-type ExperienceManifest = {
-  id: string;
-  version: string;
-  title: string;
-  description: string;
-  requested_capabilities: string[];
-  agentSlots?: AgentSlot[];
-  participantSlots?: ParticipantSlot[];
-  category?: string;
-  tags?: string[];
-  netcode?: "default" | "tick" | "p2p-ephemeral";
-  tickRateMs?: number;
-  hotKeys?: string[];
-};
-```
-
-## How It Works
+## Architecture
 
 ```
 Browser (Canvas)  <--WebSocket-->  Server  <--HTTP-->  MCP (Agent)
@@ -184,15 +156,13 @@ Browser (Canvas)  <--WebSocket-->  Server  <--HTTP-->  MCP (Agent)
                             broadcasts to all clients
 ```
 
-All state lives on the server. The Canvas renders it. Tools are the only mutation path. Both humans and agents use the same tools.
-
 ## Ecosystem
 
 | Package | Description |
 |---------|-------------|
-| **@vibevibes/sdk** (this) | Define experiences — tools, canvas, state |
-| [@vibevibes/mcp](https://github.com/vibevibes/mcp) | Runtime server — MCP + WebSocket + browser viewer |
-| [create-vibevibes](https://github.com/vibevibes/create) | `npx create-vibevibes my-exp` — scaffold in seconds |
+| **@vibevibes/sdk** | Define experiences — tools, canvas, state |
+| [@vibevibes/mcp](https://github.com/vibevibes/mcp) | Runtime engine — MCP server + WebSocket + viewer |
+| [@vibevibes/create](https://github.com/vibevibes/create) | `npm create @vibevibes` — scaffold in seconds |
 | [experiences](https://github.com/vibevibes/experiences) | Example experiences — fork and remix |
 
 ## License
