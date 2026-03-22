@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>vibevibes</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0a0a0a; color: #fff; }
+    #main-wrapper {
+      display: none;
+      width: 100%; height: 100%;
+      overflow: hidden;
+    }
+    #root { width: 100%; height: 100%; overflow: hidden; }
+    #loading {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100vh; gap: 16px; color: #94a3b8;
+    }
+    #loading .spinner {
+      width: 32px; height: 32px; border: 2px solid #334155;
+      border-top-color: #6366f1; border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #error-display {
+      display: none; padding: 32px; max-width: 600px; margin: 80px auto;
+      background: #1e1e2e; border: 1px solid #ef4444; border-radius: 12px;
+    }
+    #error-display h2 { color: #ef4444; margin-bottom: 12px; }
+    #error-display pre { font-size: 13px; color: #94a3b8; white-space: pre-wrap; word-break: break-word; }
+    #toast-container {
+      position: fixed; top: 16px; right: 16px; z-index: 9999;
+      display: flex; flex-direction: column; gap: 8px; max-width: 420px;
+      pointer-events: none;
+    }
+    .toast {
+      padding: 12px 16px; border-radius: 8px; font-size: 13px;
+      background: #1e1e2e; border: 1px solid #ef4444; color: #f87171;
+      white-space: pre-wrap; word-break: break-word;
+      animation: toastIn 0.2s ease-out;
+      cursor: pointer; pointer-events: auto;
+    }
+    .toast-build { border-color: #f59e0b; color: #fbbf24; font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace; font-size: 12px; max-height: 300px; overflow-y: auto; }
+    .toast-info { border-color: #6366f1; color: #818cf8; }
+    @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <div>Loading experience...</div>
+  </div>
+  <div id="error-display">
+    <h2>Experience Error</h2>
+    <pre id="error-message"></pre>
+  </div>
+  <div id="toast-container"></div>
+  <div id="main-wrapper">
+    <div id="root"></div>
+  </div>
+
+  <!-- External deps from CDN -->
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@18.2.0",
+      "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+      "react-dom": "https://esm.sh/react-dom@18.2.0",
+      "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+      "zod": "https://esm.sh/zod@3.22.4",
+      "yjs": "https://esm.sh/yjs@13.6.10",
+      "@vibevibes/sdk": "/sdk.js",
+      "@vibevibes/runtime": "/sdk.js"
+    }
+  }
+  </script>
+  <script type="module">
+    import React from "react";
+    import ReactDOM from "react-dom/client";
+    import { z } from "zod";
+    import * as Y from "yjs";
+
+    // ── Set up globalThis ────────────────────────────────────
+
+    // Wrap createElement to catch undefined component types
+    const _origCE = React.createElement;
+    React.createElement = function(type) {
+      if (type === undefined || type === null) {
+        console.error("[vibevibes] createElement called with undefined component. Props:", arguments[1]);
+        return _origCE("div", {
+          style: { padding: "8px", background: "#2d1b1b", border: "1px solid #ef4444",
+                   borderRadius: "4px", color: "#f87171", fontSize: "12px" }
+        }, "[undefined component]");
+      }
+      return _origCE.apply(this, arguments);
+    };
+
+    globalThis.React = React;
+    globalThis.ReactDOM = ReactDOM;
+    globalThis.Y = Y;
+    globalThis.z = z;
+
+    // SDK define helpers (same contract as @vibevibes/sdk)
+    globalThis.defineExperience = (config) => config;
+    globalThis.defineTool = (config) => ({ risk: "low", capabilities_required: [], ...config });
+    globalThis.defineTest = (config) => config;
+    globalThis.defineStream = (config) => config;
+    globalThis.validateExperience = () => ({ valid: true, errors: [], warnings: [] });
+    globalThis.quickTool = (name, desc, schema, handler) =>
+      globalThis.defineTool({ name, description: desc, input_schema: schema, handler });
+    globalThis.phaseTool = (zod, validPhases) => ({
+      name: "_phase.set",
+      description: "Transition to a new phase" + (validPhases && validPhases.length > 0 ? ` (${validPhases.join(", ")})` : ""),
+      input_schema: validPhases && validPhases.length > 0 ? zod.object({ phase: zod.enum(validPhases) }) : zod.object({ phase: zod.string() }),
+      risk: "low", capabilities_required: ["state.write"],
+      handler: async (ctx, input) => { ctx.setState({ ...ctx.state, phase: input.phase }); return { phase: input.phase }; },
+    });
+
+    const { useState, useEffect, useCallback, useMemo, useRef, useContext, useReducer, createContext, forwardRef, memo } = React;
+    const ce = React.createElement;
+
+    // ── Toast notifications ─────────────────────────────────
+
+    function showToast(message, type = "error", durationMs = 6000) {
+      const container = document.getElementById("toast-container");
+      const toast = document.createElement("div");
+      const typeClass = type === "build" ? "toast-build" : type === "info" ? "toast-info" : "";
+      toast.className = "toast" + (typeClass ? " " + typeClass : "");
+      toast.textContent = message;
+      toast.onclick = () => toast.remove();
+      container.appendChild(toast);
+      setTimeout(() => { if (toast.parentNode) toast.remove(); }, durationMs);
+    }
+
+    // ── Connect to the experience ─────────────────────────────
+
+    const SERVER = location.origin;
+    const WS_PROTO = location.protocol === "https:" ? "wss:" : "ws:";
+    const WS_URL = `${WS_PROTO}//${location.host}`;
+    const ROOM_ID = "local";
+    let currentWs = null;
+
+    // ── Browser error reporting to agent ─────────────────────
+    function reportBrowserError(msg) {
+      try {
+        fetch("/browser-error", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: String(msg), roomId: ROOM_ID }),
+        }).catch(() => {});
+      } catch {}
+    }
+
+    window.addEventListener("error", (e) => {
+      reportBrowserError(e.message || String(e));
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      reportBrowserError(e.reason?.message || String(e.reason));
+    });
+
+    function showError(msg) {
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("main-wrapper").style.display = "none";
+      document.getElementById("error-display").style.display = "block";
+      document.getElementById("error-message").textContent = msg;
+      reportBrowserError(msg);
+    }
+
+    function escHtml(s) {
+      if (s == null || s === '') return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    // Unique viewer session ID per tab
+    function getViewerSessionId() {
+      let id = sessionStorage.getItem("vibevibes_viewerSessionId");
+      if (!id) {
+        id = "viewer-" + Math.random().toString(36).slice(2, 10) + "-" + Date.now().toString(36);
+        sessionStorage.setItem("vibevibes_viewerSessionId", id);
+      }
+      return id;
+    }
+
+    // Participant details from server
+    let _participantDetails = [];
+    let _currentActorId = null;
+
+    async function start() {
+      const roomId = ROOM_ID;
+      const viewerOwner = getViewerSessionId();
+      try {
+        const ws = new WebSocket(WS_URL);
+        currentWs = ws;
+
+        let actorId = "viewer";
+        let sharedState = {};
+        let _stateVersion = 0;
+        let participants = [];
+        let roomConfig = {};
+        let Canvas = null;
+        let EntryRitual = null;
+        let ritualComplete = false;
+        let hotReloadKey = 0;
+        let optimisticOverlays = new Map();
+        let optimisticSeq = 0;
+
+        function getDisplayState() {
+          if (optimisticOverlays.size === 0) return sharedState;
+          let merged = { ...sharedState };
+          for (const overlay of optimisticOverlays.values()) {
+            Object.assign(merged, overlay.state);
+          }
+          return merged;
+        }
+
+        // Ephemeral state (high-frequency, no tool gate)
+        let ephemeralState = {};
+
+        function setEphemeral(data) {
+          ephemeralState = {
+            ...ephemeralState,
+            [actorId]: { ...(ephemeralState[actorId] || {}), ...data },
+          };
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "ephemeral", actorId, data }));
+          }
+          render();
+        }
+
+        function streamFn(name, input) {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "stream", name, input, actorId }));
+          }
+        }
+
+        function render() {
+          if (!Canvas || !reactRoot) return;
+
+          const displayState = getDisplayState();
+
+          globalThis.__vibevibes_ctx__ = {
+            sharedState: displayState,
+            callTool,
+            participants,
+            actorId,
+            ephemeralState,
+            setEphemeral,
+          };
+
+          if (EntryRitual && !ritualComplete) {
+            reactRoot.render(
+              ce(CanvasErrorBoundary, { key: hotReloadKey },
+                ce(EntryRitual, {
+                  actorId, participants, participantDetails: _participantDetails,
+                  callTool,
+                  proceed: function() { ritualComplete = true; render(); },
+                  roomConfig,
+                })
+              )
+            );
+            return;
+          }
+
+          reactRoot.render(
+            ce(CanvasErrorBoundary, { key: hotReloadKey },
+              ce(Canvas, {
+                roomId,
+                actorId,
+                sharedState: displayState,
+                callTool,
+                participants,
+                participantDetails: _participantDetails,
+                ephemeralState,
+                setEphemeral,
+                roomConfig,
+                stream: streamFn,
+                role: "player",
+              })
+            )
+          );
+        }
+
+        async function callTool(name, input, _optimisticState) {
+          if (!/^[a-zA-Z0-9_.\-:]+$/.test(name)) { throw new Error("Invalid tool name"); }
+          let overlayId = null;
+          if (_optimisticState) {
+            overlayId = ++optimisticSeq;
+            optimisticOverlays.set(overlayId, { state: _optimisticState, ts: Date.now() });
+            render();
+          }
+
+          try {
+            const res = await fetch(`${SERVER}/tools/${name}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ actorId, input: input || {} }),
+            });
+            const data = await res.json();
+            if (data.error) {
+              showToast(data.error);
+              throw new Error(data.error);
+            }
+            return data.output;
+          } catch (err) {
+            if (!document.querySelector(".toast")) {
+              showToast(`Tool '${name}' failed: ${err.message || "unknown error"}`);
+            }
+            throw err;
+          } finally {
+            if (overlayId !== null) {
+              optimisticOverlays.delete(overlayId);
+              render();
+            }
+          }
+        }
+
+        // Error boundary component
+        function getErrorHint(message) {
+          if (!message) return null;
+          if (message.includes("Cannot read properties of undefined") || message.includes("Cannot read property"))
+            return "A component accessed state that hasn't been initialized. Check your initialState and ensure all keys exist before reading them.";
+          if (message.includes("is not a function"))
+            return "Something expected to be a function is not. Check for missing imports or incorrect prop types.";
+          if (message.includes("Maximum update depth"))
+            return "Infinite re-render loop detected. Check useEffect dependencies — avoid setting state unconditionally inside useEffect.";
+          if (message.includes("Invalid hook call"))
+            return "Hooks can only be called inside React function components. Check that you're not calling useState/useEffect outside a component.";
+          if (message.includes("is not defined"))
+            return "A variable or import is missing. Check that all imports from @vibevibes/sdk or other modules are correct.";
+          return null;
+        }
+
+        class CanvasErrorBoundary extends React.Component {
+          constructor(props) {
+            super(props);
+            this.state = { error: null, componentStack: null };
+          }
+          static getDerivedStateFromError(error) { return { error }; }
+          componentDidCatch(error, info) {
+            console.error("[viewer] Experience crashed:", error, info?.componentStack);
+            if (info?.componentStack) this.setState({ componentStack: info.componentStack });
+            reportBrowserError(`[Canvas crash] ${error.message || error}`);
+          }
+          render() {
+            if (this.state.error) {
+              const msg = this.state.error.message || String(this.state.error);
+              const hint = getErrorHint(msg);
+              const stack = this.state.componentStack;
+              const fullError = msg + (stack ? "\n\nComponent stack:" + stack : "");
+
+              return ce("div", {
+                style: { padding: "32px", textAlign: "center", color: "#ef4444", maxWidth: "640px", margin: "0 auto" },
+              },
+                ce("h2", null, "Experience Crashed"),
+                ce("pre", { style: { fontSize: "13px", color: "#94a3b8", marginTop: "12px", whiteSpace: "pre-wrap", textAlign: "left" } }, msg),
+                hint ? ce("div", {
+                  style: { marginTop: "12px", padding: "12px 16px", background: "#1e293b", borderRadius: "8px", border: "1px solid #334155", textAlign: "left" },
+                },
+                  ce("strong", { style: { color: "#fbbf24", fontSize: "13px" } }, "Hint: "),
+                  ce("span", { style: { color: "#cbd5e1", fontSize: "13px" } }, hint),
+                ) : null,
+                stack ? ce("details", { style: { marginTop: "12px", textAlign: "left" } },
+                  ce("summary", { style: { color: "#64748b", cursor: "pointer", fontSize: "12px" } }, "Component stack"),
+                  ce("pre", { style: { fontSize: "11px", color: "#64748b", marginTop: "4px", whiteSpace: "pre-wrap" } }, stack),
+                ) : null,
+                ce("div", { style: { marginTop: "16px", display: "flex", gap: "8px", justifyContent: "center" } },
+                  ce("button", {
+                    onClick: () => this.setState({ error: null, componentStack: null }),
+                    style: { padding: "8px 16px", background: "#6366f1", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" },
+                  }, "Try Again"),
+                  ce("button", {
+                    onClick: () => { navigator.clipboard.writeText(fullError); showToast("Error copied to clipboard"); },
+                    style: { padding: "8px 16px", background: "#334155", color: "#cbd5e1", border: "none", borderRadius: "6px", cursor: "pointer" },
+                  }, "Copy Error"),
+                ),
+              );
+            }
+            return this.props.children;
+          }
+        }
+
+        ws.onopen = () => {
+          reconnectAttempts = 0;
+          const savedActorId = sessionStorage.getItem("vibevibes_actorId");
+          ws.send(JSON.stringify({ type: "join", username: "viewer", roomId, actorId: savedActorId, owner: viewerOwner }));
+        };
+
+        ws.onmessage = async (event) => {
+          if (currentWs !== ws) return;
+          let msg;
+          try { msg = JSON.parse(event.data); } catch { return; }
+
+          if (msg.type === "error") {
+            console.warn("[viewer] Server error:", msg.error);
+            const savedId = sessionStorage.getItem("vibevibes_actorId");
+            if (savedId) {
+              sessionStorage.removeItem("vibevibes_actorId");
+              ws.send(JSON.stringify({ type: "join", username: "viewer", roomId, owner: viewerOwner }));
+            } else {
+              showError(`Server error: ${msg.error}`);
+            }
+          }
+
+          if (msg.type === "joined") {
+            actorId = msg.actorId;
+            _currentActorId = actorId;
+            sessionStorage.setItem("vibevibes_actorId", actorId);
+            sharedState = msg.sharedState || {};
+            _stateVersion = msg.stateVersion ?? 0;
+            participants = msg.participants || [];
+            if (msg.participantDetails) _participantDetails = msg.participantDetails;
+            roomConfig = msg.config || {};
+
+            // Load client bundle
+            const bundleUrl = `${SERVER}/bundle?_t=${Date.now()}`;
+            let bundleLoaded = false;
+            for (let attempt = 0; attempt < 3 && !bundleLoaded; attempt++) {
+              try {
+                if (attempt > 0) await new Promise(r => setTimeout(r, 500 * attempt));
+                const bundleRes = await fetch(bundleUrl + "&r=" + attempt);
+                if (!bundleRes.ok) throw new Error(`Bundle fetch failed: ${bundleRes.status} ${bundleRes.statusText}`);
+                const bundleCode = await bundleRes.text();
+
+                // Protocol experience: empty bundle -> load HTML canvas in iframe
+                if (!bundleCode.trim()) {
+                  const canvasUrl = `${SERVER}/rooms/${roomId}/canvas?actorId=${encodeURIComponent(actorId)}&roomId=${encodeURIComponent(roomId)}`;
+                  const root = document.getElementById("root");
+                  root.innerHTML = "";
+                  const iframe = document.createElement("iframe");
+                  iframe.src = canvasUrl;
+                  iframe.style.cssText = "width:100%;height:100%;border:none;";
+                  root.appendChild(iframe);
+                  Canvas = null;
+                  document.getElementById("loading").style.display = "none";
+                  document.getElementById("main-wrapper").style.display = "block";
+                  bundleLoaded = true;
+                  break;
+                }
+
+                const mod = await import(bundleUrl + "&r=" + attempt);
+                const experience = mod.default ?? mod;
+                if (!experience?.Canvas) throw new Error("Experience has no Canvas component");
+
+                Canvas = experience.Canvas;
+                EntryRitual = experience.entryRitual || null;
+                ritualComplete = false;
+                if (!reactRoot) {
+                  reactRoot = ReactDOM.createRoot(document.getElementById("root"));
+                }
+
+                document.getElementById("loading").style.display = "none";
+                document.getElementById("main-wrapper").style.display = "block";
+                // Set page title from experience manifest
+                const expTitle = experience.manifest?.title || experience.name;
+                if (expTitle) document.title = expTitle;
+                render();
+                bundleLoaded = true;
+              } catch (err) {
+                console.warn(`[viewer] Bundle load attempt ${attempt + 1} failed:`, err.message);
+                if (attempt >= 2) showError(`Failed to load experience: ${err.message}`);
+              }
+            }
+          }
+
+          if (msg.type === "shared_state_update") {
+            const serverVersion = msg.stateVersion;
+
+            if (msg.state) {
+              sharedState = msg.state;
+            } else if (msg.delta) {
+              if (serverVersion && _stateVersion > 0 && serverVersion > _stateVersion + 1) {
+                console.warn(`[viewer] State version gap: ${_stateVersion} → ${serverVersion}, recovering...`);
+                fetch(`${SERVER}/state`)
+                  .then(r => r.ok ? r.json() : null)
+                  .then(data => {
+                    if (data?.sharedState) {
+                      sharedState = data.sharedState;
+                      optimisticOverlays.clear();
+                      render();
+                    }
+                  })
+                  .catch(() => {});
+              }
+              sharedState = { ...sharedState, ...msg.delta };
+              if (msg.deletedKeys) {
+                for (const key of msg.deletedKeys) {
+                  delete sharedState[key];
+                }
+              }
+            }
+
+            if (serverVersion) _stateVersion = serverVersion;
+            participants = msg.participants || participants;
+            optimisticOverlays.clear();
+            render();
+            if (msg.event) {
+              const ev = msg.event;
+              if (ev.tool && ev.actorId && !ev.actorId.startsWith("_tick")) {
+                const isAI = _participantDetails.find(d => d.actorId === ev.actorId)?.type === "ai";
+                const tag = isAI ? "\u{1F916}" : "\u{1F464}";
+                const inputStr = ev.input ? JSON.stringify(ev.input) : "{}";
+                const outputStr = ev.error ? `\u274C ${ev.error}` : (ev.output ? JSON.stringify(ev.output) : "ok");
+                console.log(`%c[ACTION] ${tag} ${ev.actorId} \u2192 ${ev.tool}(${inputStr}) \u2192 ${outputStr}`, "color: #60a5fa; font-size: 12px");
+              }
+            }
+          }
+
+          if (msg.type === "ephemeral") {
+            const senderId = msg.actorId;
+            if (senderId && senderId !== actorId) {
+              ephemeralState = {
+                ...ephemeralState,
+                [senderId]: { ...(ephemeralState[senderId] || {}), ...msg.data },
+              };
+              render();
+            }
+          }
+
+          if (msg.type === "presence_update") {
+            const prevSet = new Set(participants);
+            participants = msg.participants || participants;
+            if (msg.participantDetails) _participantDetails = msg.participantDetails;
+            const newSet = new Set(participants);
+            for (const pid of newSet) {
+              if (!prevSet.has(pid)) {
+                const detail = _participantDetails.find(d => d.actorId === pid);
+                const typeTag = detail?.type === "ai" ? "\u{1F916}" : detail?.type === "human" ? "\u{1F464}" : "\u2753";
+                const roleTag = detail?.role ? ` [${detail.role}]` : "";
+                const ownerTag = detail?.owner ? ` (owner: ${detail.owner})` : "";
+                console.log(`%c[AGENT JOIN] ${typeTag} ${pid}${roleTag}${ownerTag}`, "color: #4ade80; font-weight: bold; font-size: 13px");
+              }
+            }
+            for (const pid of prevSet) {
+              if (!newSet.has(pid)) {
+                const detail = _participantDetails.find(d => d.actorId === pid);
+                const typeTag = detail?.type === "ai" ? "\u{1F916}" : detail?.type === "human" ? "\u{1F464}" : "\u2753";
+                const roleTag = detail?.role ? ` [${detail.role}]` : "";
+                console.log(`%c[AGENT LEAVE] ${typeTag} ${pid}${roleTag}`, "color: #f87171; font-weight: bold; font-size: 13px");
+              }
+            }
+            // Prune ephemeral state for departed participants
+            const activeSet = new Set(participants);
+            for (const key of Object.keys(ephemeralState)) {
+              if (!activeSet.has(key)) delete ephemeralState[key];
+            }
+            render();
+          }
+
+          if (msg.type === "experience_updated") {
+            try {
+              const bundleUrl = `${SERVER}/bundle?_t=${Date.now()}`;
+              const bundleRes = await fetch(bundleUrl);
+              if (!bundleRes.ok) throw new Error(`Bundle fetch failed: ${bundleRes.status} ${bundleRes.statusText}`);
+              const bundleCode = await bundleRes.text();
+
+              const blob = new Blob([bundleCode], { type: "text/javascript" });
+              const url = URL.createObjectURL(blob);
+              const mod = await import(url);
+              URL.revokeObjectURL(url);
+
+              const experience = mod.default ?? mod;
+              if (experience?.Canvas) {
+                Canvas = experience.Canvas;
+                EntryRitual = experience.entryRitual || null;
+                ritualComplete = false;
+                hotReloadKey++;
+                const expTitle = experience.manifest?.title || experience.name;
+                if (expTitle) document.title = expTitle;
+                render();
+                console.log("[viewer] Hot reloaded");
+              }
+            } catch (err) {
+              console.error("[viewer] Hot reload failed:", err);
+              showToast(`Hot reload failed: ${err.message}`, "build", 10000);
+            }
+          }
+
+          if (msg.type === "build_error") {
+            showToast(`Build error:\n${msg.error}`, "build", 15000);
+          }
+
+          if (msg.type === "screenshot_request") {
+            const requestId = msg.id;
+            setTimeout(async () => {
+              try {
+                const root = document.getElementById("root");
+                if (!root) throw new Error("No #root element");
+
+                let dataUrl;
+
+                // Fast path: single <canvas> filling #root -> native toDataURL
+                const canvases = root.querySelectorAll("canvas");
+                if (canvases.length === 1) {
+                  const cvs = canvases[0];
+                  const rootRect = root.getBoundingClientRect();
+                  const cvsRect = cvs.getBoundingClientRect();
+                  const fillsRoot =
+                    Math.abs(cvsRect.width - rootRect.width) < 20 &&
+                    Math.abs(cvsRect.height - rootRect.height) < 20;
+                  if (fillsRoot) {
+                    dataUrl = cvs.toDataURL("image/png");
+                  }
+                }
+
+                // Snapshot all canvases before html2canvas
+                const canvasSnapshots = new Map();
+                if (!dataUrl) {
+                  canvases.forEach((cvs) => {
+                    try {
+                      const snap = cvs.toDataURL("image/png");
+                      if (snap && snap.length > 100) {
+                        canvasSnapshots.set(cvs, snap);
+                      }
+                    } catch {}
+                  });
+                }
+
+                // Fallback: html2canvas for DOM/SVG/mixed content
+                if (!dataUrl && typeof html2canvas === "function") {
+                  const captured = await html2canvas(root, {
+                    backgroundColor: "#0a0a0a",
+                    useCORS: true,
+                    logging: false,
+                    scale: 1,
+                    onclone: (doc, clonedRoot) => {
+                      const clonedCanvases = clonedRoot.querySelectorAll("canvas");
+                      clonedCanvases.forEach((clonedCvs, idx) => {
+                        const originalCvs = canvases[idx];
+                        const snapshot = canvasSnapshots.get(originalCvs);
+                        if (snapshot) {
+                          const img = doc.createElement("img");
+                          img.src = snapshot;
+                          img.style.width = clonedCvs.style.width || (clonedCvs.width + "px");
+                          img.style.height = clonedCvs.style.height || (clonedCvs.height + "px");
+                          img.style.display = clonedCvs.style.display;
+                          clonedCvs.parentNode?.replaceChild(img, clonedCvs);
+                        }
+                      });
+                    },
+                  });
+                  dataUrl = captured.toDataURL("image/png");
+                }
+
+                if (!dataUrl) throw new Error("No capture method available");
+
+                try { ws.send(JSON.stringify({
+                  type: "screenshot_response",
+                  id: requestId,
+                  dataUrl,
+                })); } catch (_) {}
+              } catch (err) {
+                try { ws.send(JSON.stringify({
+                  type: "screenshot_response",
+                  id: requestId,
+                  error: err.message,
+                })); } catch (_) {}
+              }
+            }, 100);
+          }
+        };
+
+        ws.onerror = (err) => {
+          console.error("[viewer] WebSocket error:", err);
+        };
+
+        ws.onclose = () => {
+          if (currentWs !== ws) return;
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 15000);
+          reconnectAttempts++;
+          console.log(`[viewer] WebSocket closed, reconnecting in ${delay}ms (attempt ${reconnectAttempts})...`);
+          showToast(`Disconnected. Reconnecting in ${Math.round(delay/1000)}s...`, "info", delay + 1000);
+          reconnectTimer = setTimeout(() => { reconnectTimer = null; if (currentWs === ws) start(); }, delay);
+        };
+
+      } catch (err) {
+        showError(err.message);
+      }
+    }
+
+    let reconnectAttempts = 0;
+    let reconnectTimer = null;
+    let reactRoot = null;
+
+    start();
+  </script>
+</body>
+</html>
