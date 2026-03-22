@@ -1,6 +1,6 @@
 {
   "name": "@vibevibes/sdk",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Define and serve shared human-AI experiences — tools, canvas, state, dev server",
   "type": "module",
   "main": "./dist/index.js",

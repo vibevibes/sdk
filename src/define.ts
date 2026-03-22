@@ -9,7 +9,7 @@ import type {
   AgentSlot,
   ParticipantSlot,
   ZodFactory,
-} from "./types";
+} from "./types.js";
 
 export function defineTool<TInput, TOutput>(config: {
   name: string;
