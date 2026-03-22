@@ -1,6 +1,6 @@
 {
   "name": "@vibevibes/sdk",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Define and serve shared human-AI experiences — tools, canvas, state, dev server",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,7 +21,7 @@
     "bin"
   ],
   "scripts": {
-    "build": "tsup && tsc -p tsconfig.server.json && node -e \"const{cpSync}=require('fs');cpSync('src/viewer','dist/viewer',{recursive:true})\"",
+    "build": "tsc -p tsconfig.server.json && tsup && node -e \"const{cpSync}=require('fs');cpSync('src/viewer','dist/viewer',{recursive:true})\"",
     "dev": "tsup --watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

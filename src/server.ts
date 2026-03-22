@@ -1056,69 +1056,6 @@ app.post("/browser-error", (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Screenshot ─────────────────────────────────────────────
-
-const screenshotCallbacks = new Map<string, { resolve: (dataUrl: string) => void; reject: (err: Error) => void }>();
-
-app.get("/screenshot", async (_req, res) => {
-  // Find a browser WebSocket connection to request a screenshot from
-  let browserWs: WebSocket | null = null;
-  for (const [ws, actorId] of room.wsConnections.entries()) {
-    if (ws.readyState === WebSocket.OPEN && actorId.startsWith("viewer-")) {
-      browserWs = ws;
-      break;
-    }
-  }
-  // Fallback: any open connection
-  if (!browserWs) {
-    for (const [ws] of room.wsConnections.entries()) {
-      if (ws.readyState === WebSocket.OPEN) {
-        browserWs = ws;
-        break;
-      }
-    }
-  }
-  if (!browserWs) {
-    return res.status(503).json({ error: "No browser connected to capture screenshot" });
-  }
-
-  const id = `ss-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-  try {
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        screenshotCallbacks.delete(id);
-        reject(new Error("Screenshot timeout"));
-      }, 10000);
-
-      screenshotCallbacks.set(id, {
-        resolve: (url) => { clearTimeout(timer); resolve(url); },
-        reject: (err) => { clearTimeout(timer); reject(err); },
-      });
-
-      browserWs!.send(JSON.stringify({ type: "screenshot_request", id }));
-    });
-
-    res.json({ dataUrl });
-  } catch (err: unknown) {
-    res.status(500).json({ error: toErrorMessage(err) });
-  }
-});
-
-// Called by WebSocket handler when browser sends screenshot_response
-function handleScreenshotResponse(msg: { id: string; dataUrl?: string; error?: string }): void {
-  const cb = screenshotCallbacks.get(msg.id);
-  if (!cb) return;
-  screenshotCallbacks.delete(msg.id);
-  if (msg.error) {
-    cb.reject(new Error(msg.error));
-  } else if (msg.dataUrl) {
-    cb.resolve(msg.dataUrl);
-  } else {
-    cb.reject(new Error("Empty screenshot response"));
-  }
-}
-
 // ── Agent context ──────────────────────────────────────────
 
 app.get("/agent-context", (req, res) => {
@@ -1436,9 +1373,6 @@ export async function startServer(config?: ServerConfig): Promise<import("http")
           }
         }
 
-        if (msg.type === "screenshot_response") {
-          handleScreenshotResponse(msg);
-        }
 
       } catch (err: unknown) {
         if (!(err instanceof SyntaxError)) {

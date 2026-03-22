@@ -61,6 +61,9 @@
     <div id="root"></div>
   </div>
 
+  <!-- html2canvas for screenshot capture -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
   <!-- External deps from CDN -->
   <script type="importmap">
   {
@@ -618,32 +621,46 @@
                 }
 
                 // Fallback: html2canvas for DOM/SVG/mixed content
-                if (!dataUrl && typeof html2canvas === "function") {
-                  const captured = await html2canvas(root, {
-                    backgroundColor: "#0a0a0a",
-                    useCORS: true,
-                    logging: false,
-                    scale: 1,
-                    onclone: (doc, clonedRoot) => {
-                      const clonedCanvases = clonedRoot.querySelectorAll("canvas");
-                      clonedCanvases.forEach((clonedCvs, idx) => {
-                        const originalCvs = canvases[idx];
-                        const snapshot = canvasSnapshots.get(originalCvs);
-                        if (snapshot) {
-                          const img = doc.createElement("img");
-                          img.src = snapshot;
-                          img.style.width = clonedCvs.style.width || (clonedCvs.width + "px");
-                          img.style.height = clonedCvs.style.height || (clonedCvs.height + "px");
-                          img.style.display = clonedCvs.style.display;
-                          clonedCvs.parentNode?.replaceChild(img, clonedCvs);
-                        }
+                if (!dataUrl) {
+                  // Lazy-load html2canvas if not already available
+                  if (typeof html2canvas !== "function") {
+                    try {
+                      await new Promise((resolve, reject) => {
+                        const s = document.createElement("script");
+                        s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+                        s.onload = resolve;
+                        s.onerror = reject;
+                        document.head.appendChild(s);
                       });
-                    },
-                  });
-                  dataUrl = captured.toDataURL("image/png");
+                    } catch {}
+                  }
+                  if (typeof html2canvas === "function") {
+                    const captured = await html2canvas(root, {
+                      backgroundColor: "#0a0a0a",
+                      useCORS: true,
+                      logging: false,
+                      scale: 1,
+                      onclone: (doc, clonedRoot) => {
+                        const clonedCanvases = clonedRoot.querySelectorAll("canvas");
+                        clonedCanvases.forEach((clonedCvs, idx) => {
+                          const originalCvs = canvases[idx];
+                          const snapshot = canvasSnapshots.get(originalCvs);
+                          if (snapshot) {
+                            const img = doc.createElement("img");
+                            img.src = snapshot;
+                            img.style.width = clonedCvs.style.width || (clonedCvs.width + "px");
+                            img.style.height = clonedCvs.style.height || (clonedCvs.height + "px");
+                            img.style.display = clonedCvs.style.display;
+                            clonedCvs.parentNode?.replaceChild(img, clonedCvs);
+                          }
+                        });
+                      },
+                    });
+                    dataUrl = captured.toDataURL("image/png");
+                  }
                 }
 
-                if (!dataUrl) throw new Error("No capture method available");
+                if (!dataUrl) throw new Error("No capture method available — ensure a browser tab is open at this URL");
 
                 try { ws.send(JSON.stringify({
                   type: "screenshot_response",
